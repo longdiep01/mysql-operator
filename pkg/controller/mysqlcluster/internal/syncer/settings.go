@@ -65,4 +65,10 @@ var (
 
 	// ExporterTargetPort is the port for the exporter
 	ExporterTargetPort = intstr.FromInt(ExporterPort)
+
+	onlyInitScriptName = "onlyInit.sh"
+	onlyInitScript     = `
+echo "Initialization complete, now exiting!"
+exit 0
+`
 )

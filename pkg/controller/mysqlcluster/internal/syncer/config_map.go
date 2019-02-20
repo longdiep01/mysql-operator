@@ -56,7 +56,8 @@ func NewConfigMapSyncer(c client.Client, scheme *runtime.Scheme, cluster *mysqlc
 		}
 
 		out.Data = map[string]string{
-			"my.cnf": data,
+			"my.cnf":           data,
+			onlyInitScriptName: onlyInitScript,
 		}
 
 		return nil

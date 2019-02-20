@@ -41,12 +41,16 @@ const (
 	confVolumeName    = "conf"
 	confMapVolumeName = "config-map"
 	dataVolumeName    = "data"
+
+	onlyInitCustomScriptVolumeName = "custom-init"
+	onlyInitCustomScriptPath       = "/docker-entrypoint-initdb.d"
 )
 
 // containers names
 const (
-	containerInitName      = "init-mysql"
+	containerInitName      = "init-conf"
 	containerCloneName     = "clone-mysql"
+	containerMysqlInitName = "init-mysql"
 	containerSidecarName   = "sidecar"
 	containerMysqlName     = "mysql"
 	containerExporterName  = "metrics-exporter"
@@ -226,7 +230,7 @@ func (s *sfsSyncer) getEnvFor(name string) []core.EnvVar {
 			Name:  "DATA_SOURCE_NAME",
 			Value: fmt.Sprintf("$(USER):$(PASSWORD)@(127.0.0.1:%d)/", MysqlPort),
 		})
-	case containerMysqlName:
+	case containerMysqlName, containerMysqlInitName:
 		env = append(env, core.EnvVar{
 			Name: "MYSQL_ROOT_PASSWORD",
 			ValueFrom: &core.EnvVarSource{
@@ -316,6 +320,12 @@ func (s *sfsSyncer) ensureInitContainersSpec() []core.Container {
 		s.ensureContainer(containerCloneName,
 			s.opt.SidecarImage,
 			[]string{"clone"},
+		),
+
+		// mysql init container
+		s.ensureContainer(containerMysqlInitName,
+			s.cluster.GetMysqlImage(),
+			[]string{},
 		),
 	}
 }
@@ -444,6 +454,8 @@ func (s *sfsSyncer) ensureContainersSpec() []core.Container {
 
 func (s *sfsSyncer) ensureVolumes() []core.Volume {
 	fileMode := int32(0644)
+	execFileMode := int32(0755)
+	trueVar := true
 	dataVolume := core.VolumeSource{}
 
 	if s.cluster.Spec.VolumeSpec.PersistentVolumeClaim != nil {
@@ -473,6 +485,22 @@ func (s *sfsSyncer) ensureVolumes() []core.Volume {
 		}),
 
 		ensureVolume(dataVolumeName, dataVolume),
+
+		ensureVolume(onlyInitCustomScriptVolumeName, core.VolumeSource{
+			ConfigMap: &core.ConfigMapVolumeSource{
+				LocalObjectReference: core.LocalObjectReference{
+					Name: s.cluster.GetNameForResource(mysqlcluster.ConfigMap),
+				},
+				Items: []core.KeyToPath{
+					{
+						Key:  onlyInitScriptName,
+						Path: onlyInitScriptName,
+					},
+				},
+				DefaultMode: &execFileMode,
+				Optional:    &trueVar,
+			},
+		}),
 	}
 }
 
@@ -569,8 +597,24 @@ func (s *sfsSyncer) getVolumeMountsFor(name string) []core.VolumeMount {
 				MountPath: ConfVolumeMountPath,
 			},
 		}
-	}
 
+	case containerMysqlInitName:
+		return []core.VolumeMount{
+			core.VolumeMount{
+				Name:      confVolumeName,
+				MountPath: ConfVolumeMountPath,
+			},
+			core.VolumeMount{
+				Name:      dataVolumeName,
+				MountPath: DataVolumeMountPath,
+			},
+			core.VolumeMount{
+				Name:      onlyInitCustomScriptVolumeName,
+				MountPath: onlyInitCustomScriptPath,
+			},
+		}
+
+	}
 	return nil
 }
 
